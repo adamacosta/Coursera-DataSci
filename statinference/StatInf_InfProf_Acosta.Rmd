@@ -1,0 +1,228 @@
+---
+title: "The impact of Vitamin C on tooth growth in guinea pigs"
+author: "Adam Acosta"
+date: "02/11/2015"
+output: pdf_document
+---
+
+### Overview
+
+The aim of this report is to determine from experimental data whether vitamin
+C can promote tooth growth in guinea pigs. This will be done using one of the
+built-in datasets from R and a variety of exploratory analyses and statistical
+significance tests. 
+
+### Description of Dataset
+
+The ToothGrowth dataset from the R datasets package contains the tooth lengths
+of 60 guinea pigs, 10 each at three different dose levels of Vitamin C, delivered
+through two methods: orange juice and ascorbic acid. This gives us six unique
+treatment groups, with no control. 
+
+```{r,echo=FALSE}
+library(datasets)
+data(ToothGrowth)
+data <- ToothGrowth
+```
+
+### Exploratory Analysis
+
+We can begin our exploration of the data by calculating the sample mean and
+standard deviation of each treatment group. Additionally, we can plot the 
+estimated kernel density of each dosage level overlaid with each other. This
+should give us some indication of the difference, if any, between the true
+underlying distributions. This simple summary analysis seems to suggest a
+significant treatment effect. 
+
+```{r,echo=FALSE,results="asis",message=FALSE}
+library(dplyr)
+library(xtable)
+means <- vector(mode="numeric",length=6)
+sds <- vector(mode="numeric",length=6)
+means[1] <- mean(filter(data,supp=="VC",dose==0.5)$len)
+means[2] <- mean(filter(data,supp=="VC",dose==1.0)$len)
+means[3] <- mean(filter(data,supp=="VC",dose==2.0)$len)
+means[4] <- mean(filter(data,supp=="OJ",dose==0.5)$len)
+means[5] <- mean(filter(data,supp=="OJ",dose==1.0)$len)
+means[6] <- mean(filter(data,supp=="OJ",dose==2.0)$len)
+sds[1] <- sd(filter(data,supp=="VC",dose==0.5)$len)
+sds[2] <- sd(filter(data,supp=="VC",dose==1.0)$len)
+sds[3] <- sd(filter(data,supp=="VC",dose==2.0)$len)
+sds[4] <- sd(filter(data,supp=="OJ",dose==0.5)$len)
+sds[5] <- sd(filter(data,supp=="OJ",dose==1.0)$len)
+sds[6] <- sd(filter(data,supp=="OJ",dose==2.0)$len)
+table <- data.frame(cbind(means,sds))
+names(table) <- c("Mean","St Dev")
+row.names(table) <- c("Ascorbic Acid 0.5","Ascorbic Acid 1.0","Ascorbic Acid 2.0"
+                      ,"Orange Juice 0.5","Orange Juice 1.0","Orange Juice 2.0")
+table <- xtable(table)
+caption(table) <- "Mean and standard deviation (n=10) of tooth lengths of Guinea
+                   pigs treated with different doses of Vitamin C, using pure
+                   ascorbic acid and orange juice as delivery vehicles."
+print(table,comment=F,type="latex")
+```
+
+```{r,echo=FALSE,fig.height=3.5}
+par(mfrow=c(1,2))
+boxplot(len~dose,filter(data,supp=="VC"),col=c("red","green","blue"))
+title(main="Ascorbic Acid")
+boxplot(len~dose,filter(data,supp=="OJ"),col=c("red","green","blue"))
+title(main="Orange Juice")
+```
+
+### Quantitative Analysis
+
+Continuing on, we can quantitively evaluate the difference between treatment
+groups and estimate the magnitude and significance of this difference. 
+
+The first thing we do is construct 95% confidence intervals, using the student's
+t-distribution, for the difference between the mean tooth length in guinea pigs 
+treated with different doses of vitamin C. We assume the values are not paired
+and that the underlying population variance is equal. We did see above that the
+sample variance is not equal for each treatment group, but we will here assume
+that this is an effect of the small sample sizes. 
+
+In each case, the entire interval lies well below zero, which suggests there is 
+indeed a treatment effect. The p-value in each case is so small as to round to 
+zero. 
+
+```{r,echo=FALSE,results="asis"}
+half_to_one <- unique(t.test(len~dose,data,subset=c(1:20,31:50),
+                             var.equal=TRUE)$conf.int)
+half_to_one[3] <- t.test(len~dose,data,subset=c(1:20,31:50),
+                         var.equal=TRUE)$p.value
+one_to_two <- unique(t.test(len~dose,data,subset=c(11:30,41:60),
+                            var.equal=TRUE)$conf.int)
+one_to_two[3] <- t.test(len~dose,data,subset=c(11:30,41:60),
+                        var.equal=TRUE)$p.value
+half_to_two <- unique(t.test(len~dose,data,subset=c(1:10,21:40,51:60),
+                             var.equal=TRUE)$conf.int)
+half_to_two[3] <- t.test(len~dose,data,subset=c(1:10,21:40,51:60),
+                         var.equal=TRUE)$p.value
+ints <- data.frame(rbind(half_to_one,one_to_two,half_to_two))
+names(ints) <- c("Lower Bound","Upper Bound","p-value")
+row.names(ints) <- c("0.5 to 1.0","1.0 to 2.0","0.5 to 2.0")
+newTable <- xtable(ints)
+caption(newTable) <- "95\\% confidence intervals for the difference of mean tooth
+                      length when changing dosage."
+print(newTable,comment=F,type="latex")
+```
+
+Additionally, we can perform the same procedure to construct a 95% confidence
+interval for the difference in mean tooth length depending upon the method of
+delivery. We see in this case that the interval includes 0, with a p-value 
+greater than 0.5, suggesting the data here is inconclusive.
+
+```{r,echo=FALSE,results="asis"}
+only <- data.frame(rbind(unique(t.test(len~supp,data,
+                                       var.equal=TRUE)$conf.int)))
+only[,3] <- t.test(len~supp,data)$p.value
+names(only) <- c("Lower Bound","Upper Bound","p-value")
+row.names(only) <- c("")
+suppTable <- xtable(only)
+caption(suppTable) <- "95\\% confidence interval for the difference of mean tooth
+                      length when changing delivery method."
+print(suppTable,comment=F,type="latex")
+```
+
+```{r,echo=FALSE,results="asis"}
+
+```
+
+### Discussion
+
+The data, taken at face value, suggest a treatment effect significant at p < 0.05
+of Vitamin C on tooth growth in guinea pigs, but no effect from varying the 
+delivery method. We may additionally observe that the treatment appears to
+possibly taper with increasing dosage; that is, the 95% confidence interval
+for the difference between 0.5 and 1.0 is largely greater in magnitude than
+the 95% confidence interval for the difference between 1.0 and 2.0. 
+
+However, we must note that we do not know either the sampling
+or experimental methodology and how the researchers mitigated against confounding
+variables. Additionally, we are working with very small samples here, as
+demonstrated by the great variety in shape of the kernel densities. Finally,
+there is no control group. 
+
+Nonetheless, this report serves as an illustration of how to use basic
+exploratory and inferential techniques to draw inferences about population
+characteristics from sampling and experimentation. Additionally, using the
+student's t-distribution allows us to draw inferences from small samples,
+provided we can be reasonably assured our data are drawn from a symmetric
+population distribution. 
+
+In this case, our box plots do not necessarily suggest symmetric distributions,
+but we are nonetheless making that assumption, simply given what we know about
+tooth growth, that we would expect lengths to be normally distributed. Finally,
+to accept these conclusions as valid, we must also note that the ascorbic acid
+boxplot did indicate a single outlier that we did not exclude from the analysis,
+which we justify by the small sample size, assuming these samples are not 
+sufficiently large to rule out any values as outliers. 
+
+### Appendix A. Code for Tables
+
+```{r,eval=FALSE}
+# mean and standard deviation of treatment groups conditioned on dosage
+library(dplyr)
+library(xtable)
+means <- vector(mode="numeric",length=6)
+sds <- vector(mode="numeric",length=6)
+means[1] <- mean(filter(data,supp=="VC",dose==0.5)$len)
+means[2] <- mean(filter(data,supp=="VC",dose==1.0)$len)
+means[3] <- mean(filter(data,supp=="VC",dose==2.0)$len)
+means[4] <- mean(filter(data,supp=="OJ",dose==0.5)$len)
+means[5] <- mean(filter(data,supp=="OJ",dose==1.0)$len)
+means[6] <- mean(filter(data,supp=="OJ",dose==2.0)$len)
+sds[1] <- sd(filter(data,supp=="VC",dose==0.5)$len)
+sds[2] <- sd(filter(data,supp=="VC",dose==1.0)$len)
+sds[3] <- sd(filter(data,supp=="VC",dose==2.0)$len)
+sds[4] <- sd(filter(data,supp=="OJ",dose==0.5)$len)
+sds[5] <- sd(filter(data,supp=="OJ",dose==1.0)$len)
+sds[6] <- sd(filter(data,supp=="OJ",dose==2.0)$len)
+table <- data.frame(cbind(means,sds))
+names(table) <- c("Mean","St Dev")
+row.names(table) <- c("Ascorbic Acid 0.5","Ascorbic Acid 1.0","Ascorbic Acid 2.0"
+                      ,"Orange Juice 0.5","Orange Juice 1.0","Orange Juice 2.0")
+table <- xtable(table)
+caption(table) <- "Mean and standard deviation (n=10) of tooth lengths of Guinea
+                   pigs treated with different doses of Vitamin C, using pure
+                   ascorbic acid and orange juice as delivery vehicles."
+print(table,comment=F,type="latex")
+
+# confidence intervals for difference of mean tooth length conditioned on
+# dosage administered
+half_to_one <- unique(t.test(len~dose,data,subset=c(1:20,31:50))$conf.int)
+half_to_one[3] <- t.test(len~dose,data,subset=c(1:20,31:50))$p.value
+one_to_two <- unique(t.test(len~dose,data,subset=c(11:30,41:60))$conf.int)
+one_to_two[3] <- t.test(len~dose,data,subset=c(11:30,41:60))$p.value
+half_to_two <- unique(t.test(len~dose,data,subset=c(1:10,21:40,51:60))$conf.int)
+half_to_two[3] <- t.test(len~dose,data,subset=c(1:10,21:40,51:60))$p.value
+ints <- data.frame(rbind(half_to_one,one_to_two,half_to_two))
+names(ints) <- c("Lower Bound","Upper Bound","p-value")
+row.names(ints) <- c("0.5 to 1.0","1.0 to 2.0","0.5 to 2.0")
+newTable <- xtable(ints)
+caption(newTable) <- "95\\% confidence intervals for the difference of mean tooth
+                      length when changing dosage."
+print(newTable,comment=F,type="latex")
+
+# confidence interval for difference of mean tooth length conditioned on
+# delivery method
+only <- data.frame(rbind(unique(t.test(len~supp,data)$conf.int)))
+only[,3] <- t.test(len~supp,data)$p.value
+names(only) <- c("Lower Bound","Upper Bound","p-value")
+row.names(only) <- c("")
+suppTable <- xtable(only)
+caption(suppTable) <- "95\\% confidence interval for the difference of mean tooth
+                      length when changing delivery method."
+print(suppTable,comment=F,type="latex")
+```
+
+### Appendix B. Code for Plots
+
+```{r,eval=FALSE}
+par(mfrow=c(1,2))
+boxplot(len~dose,filter(data,supp=="VC"),col=c("red","green","blue"))
+title(main="Ascorbic Acid")
+boxplot(len~dose,filter(data,supp=="OJ"),col=c("red","green","blue"))
+title(main="Orange Juice")
+```

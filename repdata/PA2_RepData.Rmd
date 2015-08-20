@@ -1,0 +1,281 @@
+---
+title: Human casualties and economic loss resulting from severe weather events, 
+  1950 to 2011
+author: Adam Acosta
+date: March 2015
+output: html_document
+---
+
+## Synopsis
+
+This project aims to find the severe Weather events associated with the greatest 
+number of human deaths and injuries, as well as the greatest magnitude of 
+economic loss, in the United States over the period from 1950 to 2011. The data 
+come from the National Oceanic and Atmospheric Administration' storm database, 
+which gathers together data stored in both paper and electronic format from local 
+sources. 
+
+Documentation of the data can be found at the following urls:
+
+National Weather Service [Storm Data Documentation](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf)
+
+National Climatic Data Center Storm Events [FAQ](https://d396qusza40orc.cloudfron
+t.net/repdata%2Fpeer2_doc%2FNCDC%20Storm%20Events-FAQ%20Page.pdf)
+
+This analysis indicates that tornadoes pose the greatest risk to humans, causing 
+both the greatest number of deaths and the greatest number of injuries. Floods 
+cause the greatest magnitude of economic loss. 
+
+## Data Processing
+
+### Loading Packages
+
+This analysis will utilize functions from the R car, data.table, and ggplot2 
+packages. 
+
+```{r, packages, message = FALSE}
+library(car)
+library(data.table)
+library(dplyr)
+library(lubridate)
+library(ggvis)
+```
+
+Data is hosted in bzip2 format on cloudfront. 
+
+### Loading Data
+
+Here, we load the relevant data. Since all we are ultimately trying to do is find 
+the total human and economic damage by event type, we read in only the 7 columns 
+necessary to do this, thereby saving memory space and hopefully speeding up the 
+reading in of a very large file. Additionally, as there is no data for most events
+except tornados prior to 1990, I filter out all events from prior to avoid 
+biasing the results. 
+
+```{r, download, cache = TRUE}
+dFile <- 'http://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2'
+destfile <- 'data.csv.bz2'
+if (!file.exists(destfile)) {
+    download.file(dFile, destfile = destfile)
+}
+# Note: fread() error encountered: 
+# Error in fread() : 
+#  mmap'd region has EOF at the end
+# read.table used instead
+data <- data.table(read.table('data.csv.bz2', 
+                              header = TRUE, 
+                              sep = ',', 
+                              nrows = 902298,
+                              na.strings = '',
+                              colClasses = c('NULL', 
+                                             'character',
+                                             rep('NULL', 5),
+                                             'factor',
+                                             rep('NULL', 14),
+                                             rep('numeric', 3),
+                                             'character', 
+                                             'numeric', 
+                                             'character',
+                                             rep('NULL', 9)))) %>%
+    mutate(DATE = as.Date(BGN_DATE, format = '%m/%d/%Y %H:%M:%S')) %>%
+    filter(year(DATE) > 1989)
+```
+
+### Cleaning Data
+
+Many of the event type observations are summaries of particular dates, rather 
+than actual events. Those are discarded. Additionally, all other codes in the 
+"EVTYPE" column are removed if they are obviously not weather events. Finally, 
+all event types with 0 damage, 0 fatalities, and 0 injuries are removed. 
+
+After removing these, it is necessary to turn multiple codes of single events 
+into a single code. For instance, the original factor variables includes 12 
+different ways of naming a water spout. We change all of these to "WATERSPOUT."
+
+Note that this introduces a few difficulties. For instance, rain and wind, or 
+snow and wind, are each distinct event types that often occur together. What I 
+have done is recode anything containing rain or snow first to rain or snow, then 
+recoding anything else containing wind to wind, with the rationale that it is 
+more likely to be the rain or snow causing damage than the wind when each occur 
+together (hurricanes are, of course, coded as hurricanes, to make the obvious 
+exception).
+
+Events including both ice and snow are recoded to ice. This could certainly be 
+done either way. 
+
+Hypothermia and hyperthermia are recoded to cold and heat, respectively, as each 
+is a human injury type, not a weather event. 
+
+Landslides and mudslides are both coded as landslides. 
+
+```{r, clean, cache = TRUE}
+data <- data %>% mutate(EVTYPE = toupper(EVTYPE)) %>%
+    filter(EVTYPE != "?" & EVTYPE != "APACHE COUNTY" & EVTYPE != 
+           "NO SEVERE WEATHER" & EVTYPE != "NONE" & EVTYPE != 
+           "OTHER" & EVTYPE != "SEICHE" & EVTYPE != 
+           "METRO STORM, MAY 26" & !grepl("ABNORMALLY",EVTYPE)) %>%
+    slice(!grepl("SUMMARY", EVTYPE)) %>%
+    filter(PROPDMG != 0 | CROPDMG != 0 | FATALITIES != 0 | INJURIES != 0)
+
+data[grep("AVALANCHE", data$EVTYPE),"EVTYPE"] <- "AVALANCHE"
+data[grep("BLIZZARD", data$EVTYPE),"EVTYPE"] <- "BLIZZARD"
+data[grep("COLD|HYPOTHERMIA", data$EVTYPE),"EVTYPE"] <- "COLD"
+data[grep("DRAUGHT|DRY|DRIEST", data$EVTYPE),"EVTYPE"] <- "DRAUGHT"
+data[grep("DAM ", data$EVTYPE),"EVTYPE"] <- "DAM FAILURE"
+data[grep("DOWNBURST", data$EVTYPE),"EVTYPE"] <- "DOWNBURST"
+data[grep("DUST", data$EVTYPE),"EVTYPE"] <- "DUST STORM"
+data[grep("FLOOD|STREAM", data$EVTYPE),"EVTYPE"] <- "FLOOD"
+data[grep("FOG", data$EVTYPE),"EVTYPE"] <- "FOG"
+data[grep("FREEZE", data$EVTYPE),"EVTYPE"] <- "FREEZE"
+data[grep("FUNNEL", data$EVTYPE),"EVTYPE"] <- "FUNNEL"
+data[grep("GLAZE", data$EVTYPE),"EVTYPE"] <- "GLAZE"
+data[grep("HAIL", data$EVTYPE),"EVTYPE"] <- "HAIL"
+data[grep("HEAT|HYPERTHERMIA|WARM", data$EVTYPE),"EVTYPE"] <- "HEAT"
+data[grep("HURRICANE|HURRICANE|TYPHOON", data$EVTYPE),"EVTYPE"] <- "HURRICANE"
+data[grep("ICE", data$EVTYPE),"EVTYPE"] <- "ICE"
+data[grep("LANDSLIDE|MUD", data$EVTYPE),"EVTYPE"] <- "LANDSLIDE"
+data[grep("LIGHTNING|LIGHTING|LIGNTNING", data$EVTYPE),"EVTYPE"] <- "LIGHTNING"
+data[grep("MICROBURST", data$EVTYPE),"EVTYPE"] <- "MICROBURST"
+data[grep("RAIN|PRECIPITATION", data$EVTYPE),"EVTYPE"] <- "RAIN"
+data[grep("RIP CURRENT", data$EVTYPE),"EVTYPE"] <- "RIP CURRENT"
+data[grep("SLEET", data$EVTYPE),"EVTYPE"] <- "SLEET"
+data[grep("SNOW", data$EVTYPE),"EVTYPE"] <- "SNOW"
+data[grep("SURGE", data$EVTYPE),"EVTYPE"] <- "STORM SURGE"
+data[grep("STRONG WIND", data$EVTYPE),"EVTYPE"] <- "STRONG WIND"
+data[grep("SURF", data$EVTYPE),"EVTYPE"] <- "SURF"
+data[grep("THUNDERSTORM|TUNDERSTORM|TSTM|THUNDEERSTORM|THUNDERESTORM |
+          THUNERSTORM|TSTMW", data$EVTYPE),"EVTYPE"] <- "THUNDERSTORM WIND"
+data[grep("TORNADO|TORNDAO", data$EVTYPE),"EVTYPE"] <- "TORNADO"
+data[grep("TROPICAL", data$EVTYPE),"EVTYPE"] <- "TROPICAL STORM"
+data[grep("VOLCANIC", data$EVTYPE),"EVTYPE"] <- "VOLCANIC ERUPTION"
+data[grep("SPOUT", data$EVTYPE),"EVTYPE"] <-"WATERSPOUT"
+data[grep("WILDFIRES|WILD FIRES|WILDFIRE|WILD/FOREST", data$EVTYPE),
+     "EVTYPE"] <- "WILDFIRE"
+data[grep("WIND|WND", data$EVTYPE),"EVTYPE"] <- "WIND"
+data[grep("WINTER STORM", data$EVTYPE),"EVTYPE"] <- "WINTER STORM"
+data[grep("WINTER EVENT|WINTRY", data$EVTYPE),"EVTYPE"] <- "WINTER EVENT"
+```
+
+Property and crop damage are coded in the dataset as a mantissa exponent pair, 
+with the PROPDMGEXP and CROPDMGEXP variables indicating the power of 10 to 
+multiply the PROPDMG and CROPDMG variables by to get the dollar amount of loss. 
+Multiple encodings are used, and we must change each of these to a numeric value 
+equal to the power of 10 we need to multiply by, then carry out the 
+multiplication.
+
+Finally, I add property and crop damage into a new column to find the total loss 
+associated with each event type. 
+
+```{r, group_damage, cache = TRUE}
+data$PROPDMG <- data$PROPDMG * as.numeric(recode(toupper(data$PROPDMGEXP),
+                                                 "'NA'=1;'0'=1;'1'=10;
+                                                 '2'=100;'3'=1000;'4'=10000;
+                                                 '5'=100000;'6'=1000000;
+                                                 '7'=10000000;'8'=100000000;
+                                                 'H'=100;'K'=1000;'M'=1000000;
+                                                 'B'=1000000000;'-'=0;'?'=0;
+                                                 '+'=0; else=1", 
+                                                 as.factor.result = FALSE))
+data$CROPDMG <- data$CROPDMG * as.numeric(recode(toupper(data$CROPDMGEXP),
+                                                 "'NA'=1;'0'=1;'2'=100;
+                                                 'B'=1000000000;'K'=1000;
+                                                 'M'=1000000;'?'=0;else=1", 
+                                                 as.factor.result = FALSE))
+data$TOTALDMG <- data$PROPDMG + data$CROPDMG
+```
+
+We then find the 10 events associated with the greatest number of injuries, the 
+greatest number of deaths, and the greatest magnitude of economic loss, 
+accounting for both property and crop damage. 
+
+```{r, group_death_inj, cache = TRUE}
+deaths <- aggregate(FATALITIES ~ EVTYPE, data, sum)
+names(deaths) <- c("Event", "Fatalities")
+deaths <- deaths[order(-deaths$Fatalities), ][1:10, ]
+deaths$Event <- factor(deaths$Event, 
+                       levels = deaths[order(deaths$Fatalities), "Event"])
+
+injuries <- aggregate(INJURIES ~ EVTYPE, data, sum)
+names(injuries) <- c("Event", "Injuries")
+injuries <- injuries[order(-injuries$Injuries), ][1:10, ]
+injuries$Event <- factor(injuries$Event, 
+                         levels = injuries[order(injuries$Injuries), "Event"])
+
+loss <- aggregate(TOTALDMG ~ EVTYPE, data, sum)
+names(loss) <- c("Event", "Cost")
+loss <- loss[order(-loss$Cost), ][1:10, ]
+loss$Event <- factor(loss$Event, levels = loss[order(loss$Cost), "Event"])
+```
+
+## Results
+
+### Injuries and Fatalities
+
+We see below that tornadoes overwhelmingly cause both the most deaths and the 
+most injuries. 
+
+```{r, death_plot}
+deaths %>%
+    ggvis(~Event, ~Fatalities / 1e3) %>%
+    layer_bars(width := 10, fill := 'steelblue') %>%
+    add_axis('x', title = '', 
+        properties = axis_props(
+            grid = list(strokeWidth = 0), 
+            ticks = list(strokeWidth = 0), 
+            labels = list(angle = 30, align = 'left')
+        )
+    ) %>%
+    add_axis('y', title = 'thousands killed', title_offset = 50)
+```
+
+```{r, injury_plot}
+injuries %>%
+    ggvis(~Event, ~Injuries / 1e3) %>%
+    layer_bars(width := 10, fill := 'steelblue') %>%
+    add_axis('x', title = '', 
+        properties = axis_props(
+            grid = list(strokeWidth = 0), 
+            ticks = list(strokeWidth = 0), 
+            labels = list(angle = 30, align = 'left')
+        )
+    ) %>%
+    add_axis('y', title = 'thousands injured', title_offset = 50)
+```
+
+### Property Damage and Crop Loss
+
+Additionally, flooding causes the most aggregate economic loss. 
+
+```{r, econ_loss_plot}
+loss %>%
+    ggvis(~Event, ~Cost / 1e9) %>%
+    layer_bars(width := 10, fill := 'steelblue') %>%
+    add_axis('x', title = '', 
+        properties = axis_props(
+            grid = list(strokeWidth = 0), 
+            ticks = list(strokeWidth = 0), 
+            labels = list(angle = 30, align = 'left')
+        )
+    ) %>%
+    add_axis('y', title = 'billions USD', title_offset = 50)
+```
+
+## Conclusions
+
+It is interesting to see that tornadoes are so much more deadly than ever other 
+type of weather event, and yet it is flooding and hurricanes that do the most 
+damage to property and crops. This suggests that water levels that are not high 
+enough to cause widespread drowning can still do significant damage to structures 
+and fields. Additionally, the speed with which a tornado occurs likely prevents 
+prior evacuation, whereas hurricans tend to occur with a few days warning, and 
+flooding tends to build up more slowly. This is not the case with flash floods, 
+but flash floods tend to occur in low-population areas such as desert 
+wash-basins.
+
+The most obvious policy direction suggested by this research is that a very good 
+deal, probably most, of the research dollars allocated to storm research should 
+be allocated to tornado research, as developing the ability to accurately predict 
+these even just a few hours more ahead of time can save more lives than any other 
+meteorology-related measure. Additionally, the $2.5 trillion cumulative damage 
+done by flooding and storm surges suggests money can be saved by investing in 
+levees and discouraging development in low-lying flood basins.

@@ -1,0 +1,188 @@
+---
+title: "Illustrating the central limit theorem using simulation"
+author: "Adam Acosta"
+date: "02/11/2015"
+output: pdf_document
+---
+
+### Overview
+
+In this project, we aim to illustrate the Central Limit Theorem by simulating
+samples from the exponential distribution, a highly right-skewed distribution,
+to illustrate the power of the theorem, that the distribution of the sample
+mean drawn from any underlying distribution, even a highly skewed distribution,
+will tend toward approximately normal as the number of samples means tends to 
+infinity. 
+
+### Simulations
+
+To perform the simulation, we set the random number generator seed to 1000, then
+produce 1000 random vectors of size n = 40 from the exponential distribution, 
+taking the mean of each vector and storing these as our data to analyze. 
+
+```{r,echo=FALSE}
+set.seed(1000)
+means <- vector(mode="numeric",length="1000")
+for (i in 1:1000) means[i] <- mean(rexp(40,0.2))
+```
+
+### Experimental versus Theoretical Moments
+
+The first part of our analysis compares the summary statistics of our simulated
+empirical distribution to their expected values. 
+
+The theoretical mean and variance of the exponential distribution with 
+lambda = 0.2 are known from formula, the mean being 1/lambda and the variance
+1/lambda^2. We compare these below to the experimentally simulated mean and
+variance. 
+
+```{r, echo=FALSE,results="asis",warning=FALSE,message=FALSE}
+library(xtable)
+library(dplyr)
+tableData <- data.frame(cbind(c(mean(means),var(means)),
+                              c(1/0.2,(1/0.2^2)/sqrt(1000))))
+names(tableData) <- c("Experimental","Theoretical")
+tableData <- mutate(tableData,Delta=Theoretical - Experimental)
+row.names(tableData) <- c("Mean","Variance")
+table <- xtable(tableData)
+caption(table) <- "Difference between the experimental and theoretical
+                   mean and variance of 1000 simulated means of the exponential
+                   distribution with parameters n = 40 and lambda = 0.2."
+print(table, type="latex",comment=FALSE)
+```
+
+We see that, in each case, the simulated value is very close to the 
+theoretical value. 
+
+### Visualizing the Distribution
+
+The simplest way in which  we can visualize the empirical distribution of our 
+simulation is by using a histogram. Figure 1 shows this histogram.
+
+```{r,echo=FALSE}
+hist(means,breaks=20,freq=F,col="red",xlab="",ylab="",main="")
+title(main="Relative Frequency of Sample Mean")
+title(sub="Figure 1. Relative frequency of the means of one thousand
+      simulated samples of size n = 40 from the exponential distribution.")
+```
+
+Another way to come directly compare our empirical distribution to the normal is 
+to overlay the kernel density with the normal distribution to give a visual idea 
+of how closely they match. This is shown below in Figure 2. 
+
+```{r,echo=FALSE}
+x <- seq(2,8,length=1000)
+px <- dnorm(x,mean=5)
+plot(density(means),main="",xlab="",ylab="",xlim=c(2,8))
+polygon(density(means),col="red",border="red")
+lines(x,px,col="blue")
+legend("topright",legend=c("Simulated Values","Normal Values"),
+       col=c("red","blue"),lty=1)
+title(main="Density of Sample Mean")
+title(sub="Figure 2. Probability density function of simulated sample means
+      overlaid with the normal distribution.")
+```
+
+Finally, the preferred visual means of testing how close a distribution is to 
+normal is the quantile-quantile plot, where we plot the theoretical quantiles (if 
+the underlying distribution is actually normal) against the observed quantiles. 
+We see below that the empirical distribution of the sample mean does appear to be
+very close to normal. 
+
+```{r,echo=FALSE}
+qqnorm(means,col="red",pch=20,main="",xlab="",ylab="")
+qqline(means,col="blue",lwd=2)
+legend("topleft",legend=c("Simulated Quantiles","Normal Quantiles"),
+       col=c("red","blue"),lty=1)
+title(main="q-q Plot of Sample Means")
+title(sub="Figure 3. Quantile-quantile plot of theoretical quantiles from the
+      normal distribution against observed sample quantiles.")
+```
+
+### Discussion
+
+What we see with our simple exploratory analysis is that our sample distribution
+is somewhat right-skewed, in that the right tail is much longer than the left. We 
+can see in both the density plot as well as the q-q plot that the sample diverges 
+furthest from normal in the left tail, where our sample quantiles are quite a bit 
+greater than the equivalent normal quantiles.
+
+This is not surprising, as the Central Limit Theorem only specifies that the
+distribution of means of any arbitrary distribution tends to approximately normal 
+as n tends to infinity. The closeness of fit will always be greater, however,
+when the underlying distribution we draw samples from is itself a symmetric
+distribution. 
+
+Sampling from the exponential distribution for our simulations, this is not the
+case. In particular, no value drawn from an exponential distribution can
+ever be negative. Thus, you will never get a negative mean, or even a mean of 
+zero. On the other hand, the normal distribution contains non-negative
+probabilities for every possible value, all the way to negative infinity. This
+explains why the left tails are different, as the left tail of our sample
+distribution cuts off at zero, whereas the left-tail of a true normal 
+distribution extends forever. 
+
+Nonetheless, we do see, both from the overlaid density plots and the q-q plot,
+that the distribution can be characterized as approximately normal, certainly
+far more so than the exponential distribution itself. Compared to the expoential
+distribution itself, the distribution of sample means is strikingly more
+bell-curve shaped. 
+
+### Appendix A. Code for Simulation
+
+```{r,eval=FALSE}
+set.seed(1000)
+means <- vector(mode="numeric",length="1000")
+for (i in 1:1000) means[i] <- mean(rexp(40,0.2))
+```
+
+### Appendix B. Code for Producing Table
+
+```{r,eval=FALSE}
+library(xtable)
+library(dplyr)
+tableData <- data.frame(cbind(c(mean(means),var(means))),c(1/0.2,1/0.2^2)))
+names(tableData) <- c("Theoretical","Experimental")
+mutate(tableData,Delta=Theoretical - Experimental)
+row.names(tableData) <- c("Mean","Variance")
+table <- xtable(tableData)
+caption(table) <- "Table 1. Difference between the experimental and theoretical
+                   mean and variance of 1000 simulated means of the exponential
+                   distribution with parameters n = 40 and lambda = 0.2."
+print(table)
+```
+
+### Appendix C. Code for Producing Plots
+
+```{r,eval=FALSE}
+# Figure 1
+hist(means,breaks=20,freq=F,col="red",xlab="",ylab="",main="")
+title(main="Relative Frequency of Sample Mean")
+title(sub="Figure 1. Relative frequency of the means of one thousand
+      simulated samples of size n = 40 from the exponential distribution.")
+```
+
+```{r, eval=FALSE}
+# Figure 2
+x <- seq(2,8,length=1000)
+px <- dnorm(x,mean=5)
+plot(density(means),main="",xlab="",ylab="",xlim=c(2,8))
+polygon(density(means),col="red",border="red")
+lines(x,px,col="blue")
+legend("topright",legend=c("Simulated Values","Normal Values"),
+       col=c("red","blue"),lty=1)
+title(main="Density of Sample Mean")
+title(sub="Figure 2. Probability density function of simulated sample means
+      overlaid with the normal distribution.")
+```
+
+```{r,eval=FALSE}
+# Figure 3
+qqnorm(means,col="red",pch=20,main="",xlab="",ylab="")
+qqline(means,col="blue",lwd=2)
+legend("topleft",legend=c("Simulated Quantiles","Normal Quantiles"),
+       col=c("red","blue"),lty=1)
+title(main="q-q Plot of Sample Means")
+title(sub="Figure 3. Quantile-quantile plot of theoretical quantiles from the
+      normal distribution against observed sample quantiles.")
+```

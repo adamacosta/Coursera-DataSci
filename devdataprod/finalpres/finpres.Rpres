@@ -1,0 +1,118 @@
+NFL Season Visualizer
+========================================================
+author: Adam Acosta
+date: June 20th, 2015
+
+
+Purpose of the App
+========================================================
+
+This application allows the user to build a force-directed
+network model of several NFL seasons. It serves as a companion
+to a modeling report building a Super Bowl odds predictor 
+from such a network model.
+
+The full report can be found [here](http://rpubs.com/adamacosta/nflmodel)
+
+Building the prediction model requires visualizing a season 
+as a directed graph with edges between teams that played each 
+other, weighted by the cumulative margin of victory across all 
+games.
+
+
+Why Shiny Apps?
+========================================================
+
+Shiny Apps allows the use of the networkD3 library, which 
+otherwise cannot run in an Rmarkdown pdf file, making it 
+more difficult to understand the model. The application is 
+currently very bare-bones, but could also be extended in the 
+future to contain a server-side version of the prediction 
+model itself, allowing a user to upload future seasons and 
+get the predicted odds back for each team. It could also be 
+updated automatically each week during a season to generate 
+new odds on a week-by-week basis, similar to the way the 
+Sagarin ratings themselves work. 
+
+
+Building the Model
+========================================================
+
+```{r, echo=FALSE}
+library(dplyr)
+library(ggplot2)
+library(ggthemes)
+library(data.table)
+# contains pre-processed cumulative margins and super bowl outcomes
+nfl          <- fread("finaldata.csv")
+# build the Our little projects color palette
+one          <- c(53, 58, 41, 233, 235)
+two          <- c(68, 154, 171, 224, 114)
+three        <- c(88, 217, 164, 214, 96)
+project      <- rgb(one, two, three, maxColorValue=255)
+rm(one, two, three)
+
+fit <- glm(won ~ margins, data=nfl, family="binomial")
+nfl$fitted <- predict(fit, data=data.frame(margins=nfl$margins), type="response")
+n_bins <- length(nfl$margins) / 10
+bins <- numeric(n_bins)
+obs <- numeric(n_bins)
+for (i in 0:n_bins - 1) {
+     bins[i + 1] <- mean(nfl$margins[(10 * i + 1):(10 * i + 10)])
+     obs[i + 1] <- sum(nfl$won[(10 * i + 1):(10 * i + 10)] == 1) / 10
+}
+binned <- data.frame(bins=bins, obs=obs)
+binned_fit <- predict(fit, newdata=data.frame(margins=bins), type="response")
+binned$fitted <- binned_fit
+rm(binned_fit, n_bins, bins, obs)
+
+wins_plus <- select(nfl, margins, won, fitted) %>%
+             slice(281:980)
+num       <- floor(sum(wins_plus$won) / 5)
+expected  <- numeric(num)
+observed  <- numeric(num)
+ind       <- 1
+obwon     <- 0
+exwon     <- 0
+for (i in 1:nrow(wins_plus)) {
+     exwon <- exwon + wins_plus$fitted[i]
+     if (wins_plus$won[i] == 1) {
+          obwon <- obwon + 1
+     }
+     if (exwon > 5 || ind == length(expected)) {
+          observed[ind] <- obwon
+          expected[ind] <- exwon
+          obwon         <- 0
+          exwon         <- 0
+          ind           <- ind + 1
+     }
+     if (ind > length(expected)) {
+          break
+     }
+}
+rm(num, ind, obwon, exwon, i)
+```
+
+The odds model itself is a simple logistic regression model, 
+$P(Y=1) = \frac{1}{1 + e^{4 - 0.0064 x}}$ , illustrated by the following plot:
+
+```{r, echo=FALSE}
+g2 <- ggplot(binned, aes(bins, obs)) +
+      geom_point(pch=21, cex=0.75, color=project[1]) +
+      geom_line(aes(y=fitted), color=project[5]) +
+      theme_few() +
+      labs(y="Super Bowl win probability", x="points")
+g2
+```
+
+
+Where To Go From Here
+========================================================
+
+Both the application and the model are currently very basic.
+Aside from embedding the predictive model itself in the application,
+further improvements could be made by allowing an interactive 
+interface showing the box scores from the season, and allowing 
+the building of regression based upon different stats, rather than 
+just the margin of victory. 
+

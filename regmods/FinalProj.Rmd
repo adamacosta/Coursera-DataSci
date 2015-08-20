@@ -1,0 +1,184 @@
+---
+title: "The relationship between transmission and mpg"
+author: "Adam Acosta"
+output: pdf_document
+---
+
+```{r setup, cache=F, echo=F, message=F, warning=F, tidy=F, results='hide'}
+library(knitr)
+library(xtable)
+library(stargazer)
+data(mtcars)
+attach(mtcars)
+opts_chunk$set(message=F, error=F, warning=F, comment=F, dpi=100, tidy=F, 
+               echo=F, results="asis", fig.height=5, fig.width=6.5, 
+               fig.path="final/figures/")
+setwd("/home/adam/datasciencecoursera/regmod")
+```
+
+### Executive Summary
+
+We wish to answer the question: Is an automatic or manual transmission better for 
+MPG? As well as to quantify the MPG difference between transmission types. We 
+use the correlation matrix and scatterplot matrix to cut down the number of 
+plausible covariates, then conduct two-way ANOVAs and conclude that a manual 
+transmission is better for MPG, but is not statistically significant if we 
+control for weight.
+
+### Data Description
+
+The data come from Motor Trend magazine showing miles per gallon and ten other 
+variates in 32 cars from the 1974 model year, including engine cylinders, 
+displacement ($in^3$), horsepower, rear axle ratio, weight (thousands lbs), 1/4 
+mile time, cylinder configuration, transmission, number of gears, and number of 
+carburetors. 
+
+### Covariate Selection and Exploratory Analysis
+
+We first select by appealing to theory. Physics tells us that it takes more 
+force to move a heavy than light vehicle and a more powerful engine burns more 
+fuel. Examine the correlation matrix (Figure 1). 
+Note the high correlation between cyl and disp: more cylinders means a larger 
+engine. There is a high correlation between these and hp, as large engines tend 
+to be more powerful. Note the negative correlation between V/S and cyl, as an 
+engine having straight pistons is telling us it is a small engine (no straight 8s 
+were produced in 1974). 
+
+We must include wt as a covariate, as this makes the most physical sense. Of the 
+measures of power, we use hp, as that among the three is least correlated with 
+wt. This also allows us to exclude carb, as the use of multiple carburetors in 
+70s muscle cars was a high-performance engine enhancement allowing multiple 
+intake manifolds, so is really measuring hp. Finally, note that hp and wt are 
+still correlated. So we decouple power from weight by taking the ratio, 
+which has a very low correlation, `r round(cor(hp/wt,wt), 2)`. This gives us the 
+proposed model. 
+
+$$MPG = \beta_0 + \beta_1 AM + \beta_2 WT + \beta_3 \frac{HP}{WT}$$
+
+### Model Selection and Interpretation
+
+```{r data mutate}
+library(dplyr)
+newdata <- select(mutate(mtcars,power=round(hp/wt,3)), mpg, wt, am, power)
+attach(newdata)
+remove(mtcars)
+```
+
+First, we model mpg as a function of only wt, the best predictor with the best 
+theoretical explanatory power. We compare this simplest model to models that 
+include power and transmission using two-way ANOVA (Table 1). The p-value 
+in the first comparison suggests it is significant (p = 0.002), but in the second 
+comparison is not (p = 0.17). This seems to indicate that power adds explanatory 
+value but transmission type does not. Note the rather large F-ratio (12.15) when 
+adding power but the rather small F-ratio (1.99) when adding transmission. 
+
+```{r anova1}
+fit1 <- lm(mpg ~ wt)
+fit2 <- lm(mpg ~ wt + power)
+fit3 <- lm(mpg ~ wt + power + am)
+table1 <- xtable(anova(fit1, fit2, fit3))
+caption(table1) <- "ANOVA wt v. wt + power v. wt + power + am"
+print(table1, comment=FALSE, caption.placement="bottom", 
+      table.placement="!h")
+```
+
+However, if plot mpg against wt by transmission type (Figure 2), each slope 
+appears to be different as well as outside the 95% confidence interval of the 
+other. This suggests an interaction model, with am as a grouping variable. When 
+we try this (Table 2), we get a significant finding (p = 0.009). A q-q 
+plot of the residuals ofthe interaction model (Figure 3) shows a reasonably 
+normal distribution with no obvious pattern.
+
+```{r anova2}
+fit5 <- lm(mpg ~ wt + power + wt*am, data=newdata)
+table3 <- xtable(anova(fit2, fit5))
+caption(table3) <- "ANOVA wt + power v. wt + power wt*am"
+print(table3, comment=FALSE, caption.placement="bottom",
+      table.placement="!h")
+```
+
+We get the final model comparison shown below (Table 3). 
+
+```{r regression_table}
+stargazer(fit1, fit2, fit5, title="Comparison of Regression Models", 
+          dep.var.labels=c("Miles per Gallon"),
+          covariate.labels=c("Weight (thousands lbs)", 
+                             "Horsepower to Weight Ratio",
+                             "Transmission (manual = 1)", 
+                             "Weight Grouped by Transmission"),
+          omit.stat=c("ser","f"), single.row=TRUE, header=FALSE)
+```
+
+### Conclusion
+
+We conclude that, although weight is the greatest determinant of fuel efficiency, 
+transmission type does have a noticeable effect, amplifying the effect of weight, 
+perhaps because a manual transmission is itself lighter than an automatic, so 
+weight is not independent of transmission type. The final model we get is:
+
+$$MPG = 34.37 - 3.6 WT - 0.09 \frac{HP}{WT} + 12.4 AM - 3.9 WT \cdot AM$$
+
+Note the rather odd effect (apparent from Figure 2) that the weight penalty for 
+having a manual transmissionis greater than for an automatic (-7.7 mpg/1000 lbs 
+to -3.6 mpg/1000 lbs), but the manual transmissionadds back on average 12.4 miles 
+per gallon by interaction with weight. We offer no explanation, but suggestthat 
+future investigation compare like vehicles that are available in both transmissio
+n types, to remove allconfounders at the experiment level. It is also possible 
+that the relationship between weight and mpg isquadratic, with an increasing 
+penalty regardless of transmission type, but the grouping of the data here 
+doesnot seem to suggest that, as the relationship is very strongly linear within 
+each group.
+
+### Appendix A: Supporting Figures
+
+```{r correlation}
+cor_mat <- xtable(round(cor(mtcars),2))
+print(cor_mat, comment=FALSE, floating=FALSE)
+```
+
+```{r pairs}
+#n <- ncol(mtcars)
+#op <- par(mfrow=c(n, n), mar=rep(0, 4), oma=c(4.1, 4.1, 5.1, 4.1), 
+#          cex.lab=0.85, cex.axis=0.8, cex.main=0.9)
+#for(i in 1:n)for(j in 1:n) {
+#     xrange = range(mtcars[,j])
+#     yrange = range(mtcars[,i])
+#     plot.new()
+#     plot.window(xlim = xrange, ylim = yrange)
+#     if (i == j) {
+#          text(mean(xrange), mean(yrange),
+#               colnames(mtcars)[j])
+#     } else {
+#          points(mtcars[,j], mtcars[,i], pch=21, cex=0.5, col="steelblue", 
+#                 bg="steelblue")
+#          #abline(lm(mtcars[,i] ~ mtcars[,j]), col="tomato3", lwd=0.5)
+#     }
+#     box(col="lightgray")
+#}
+#par(op)
+```
+
+Figure 1. Correlation matrix of mtcars dataset.
+
+```{r regression}
+library(ggthemes)
+g <- ggplot(mtcars, aes(wt, mpg, col=factor(am)))
+g <- g + geom_point() + geom_smooth(aes(group=factor(am)), method="lm") + 
+     theme_few()
+g + scale_colour_discrete(name="Transmission", breaks=c(0,1), 
+                          labels=c("Automatic","Manual"))
+```
+
+Figure 2. Regression lines and confidence intervals of mean for 
+$MPG = \beta_0 + \beta_1 WT$ by transmission.
+
+```{r residuals1}
+q <- ggplot(mtcars, aes(sample=resid(fit5), colour=factor(am)))
+q <- q + stat_qq() + geom_abline(yintercept=0, slope=2, colour="slategray") + 
+     theme_few()
+q + scale_colour_discrete(name="Transmission", breaks=c(0,1), 
+                          labels=c("Automatic","Manual"))
+```
+
+Figure 3. q-q plot of model residuals: 
+$MPG = 34.37 - 3.6 WT - 0.09 \frac{HP}{WT} + 12.4 AM - 3.9 WT \cdot AM$
